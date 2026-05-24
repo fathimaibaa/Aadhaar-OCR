@@ -22,11 +22,15 @@ const Home: React.FC = () => {
   const [aadhaarData, setAadhaarData] =
     useState<AadhaarData | null>(null);
 
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
   const dispatch = useDispatch();
+
+  // =========================
+  // IMAGE UPLOAD
+  // =========================
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -53,13 +57,21 @@ const Home: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  // =========================
+  // CLEAN OCR TEXT
+  // =========================
+
   const cleanText = (text: string) => {
     return text
-      .replace(/\n/g, ' ')
+      .replace(/\r/g, '')
+      .replace(/\t/g, ' ')
       .replace(/\s+/g, ' ')
-      .replace(/[|]/g, '')
       .trim();
   };
+
+  // =========================
+  // EXTRACT NAME
+  // =========================
 
   const extractName = (text: string) => {
     const lines = text
@@ -67,33 +79,34 @@ const Home: React.FC = () => {
       .map(line => line.trim())
       .filter(line => line.length > 2);
 
-    const ignoreWords = [
+    const ignoredWords = [
       'government',
       'india',
       'aadhaar',
-      'unique',
-      'identification',
       'authority',
       'male',
       'female',
       'dob',
-      'year',
-      'birth',
+      'address',
+      'unique',
+      'identification',
     ];
 
     for (const line of lines) {
       const lower = line.toLowerCase();
 
-      const containsIgnoreWord = ignoreWords.some(word =>
+      const hasIgnoredWord = ignoredWords.some(word =>
         lower.includes(word)
       );
 
-      if (containsIgnoreWord) continue;
+      if (hasIgnoredWord) continue;
 
-      const isValidName =
-        /^[A-Z][a-z]+(?:\s[A-Z][a-z]+)+$/.test(line);
+      const validName =
+        /^[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)+$/.test(
+          line
+        );
 
-      if (isValidName) {
+      if (validName) {
         return line;
       }
     }
@@ -101,23 +114,9 @@ const Home: React.FC = () => {
     return 'Not found';
   };
 
-  const extractDOB = (text: string) => {
-    const dobRegex =
-      /\b\d{2}\/\d{2}\/\d{4}\b/;
-
-    const match = text.match(dobRegex);
-
-    return match ? match[0] : 'Not found';
-  };
-
-  const extractGender = (text: string) => {
-    const genderRegex =
-      /\b(Male|Female)\b/i;
-
-    const match = text.match(genderRegex);
-
-    return match ? match[0] : 'Not found';
-  };
+  // =========================
+  // EXTRACT AADHAAR NUMBER
+  // =========================
 
   const extractAadhaarNumber = (text: string) => {
     const aadhaarRegex =
@@ -130,6 +129,36 @@ const Home: React.FC = () => {
     return match[0].replace(/\s+/g, ' ');
   };
 
+  // =========================
+  // EXTRACT DOB
+  // =========================
+
+  const extractDOB = (text: string) => {
+    const dobRegex =
+      /\b\d{2}\/\d{2}\/\d{4}\b/;
+
+    const match = text.match(dobRegex);
+
+    return match ? match[0] : 'Not found';
+  };
+
+  // =========================
+  // EXTRACT GENDER
+  // =========================
+
+  const extractGender = (text: string) => {
+    const genderRegex =
+      /\b(Male|Female)\b/i;
+
+    const match = text.match(genderRegex);
+
+    return match ? match[0] : 'Not found';
+  };
+
+  // =========================
+  // EXTRACT ADDRESS
+  // =========================
+
   const extractAddress = (text: string) => {
     const lowerText = text.toLowerCase();
 
@@ -140,28 +169,38 @@ const Home: React.FC = () => {
       return 'Not found';
     }
 
-    let address = text.slice(addressIndex + 7);
+    let address = text.slice(addressIndex);
 
     address = address
+      .replace(/Address[:\-]*/gi, '')
       .replace(/www\.uidai\.gov\.in/gi, '')
       .replace(/help@uidai\.gov\.in/gi, '')
-      .replace(/[^\w\s,./-]/g, '')
+      .replace(/[^\w\s,./()-]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
     return address || 'Not found';
   };
 
+  // =========================
+  // OCR PROCESS
+  // =========================
+
   const handleOcrProcess = async () => {
     if (!frontImage || !backImage) {
-      setError('Please upload both front and back Aadhaar images.');
+      setError(
+        'Please upload both front and back images.'
+      );
       return;
     }
 
     setLoading(true);
+
     setError(null);
 
     try {
+      // FRONT IMAGE OCR
+      // English only
       const frontResult =
         await Tesseract.recognize(
           frontImage,
@@ -171,14 +210,26 @@ const Home: React.FC = () => {
           }
         );
 
+      // BACK IMAGE OCR
+      // English + Malayalam
       const backResult =
         await Tesseract.recognize(
           backImage,
-          'eng',
+          'eng+mal',
           {
             logger: m => console.log(m),
           }
         );
+
+      console.log(
+        'FRONT OCR RAW:',
+        frontResult.data.text
+      );
+
+      console.log(
+        'BACK OCR RAW:',
+        backResult.data.text
+      );
 
       const frontText = cleanText(
         frontResult.data.text
@@ -188,24 +239,35 @@ const Home: React.FC = () => {
         backResult.data.text
       );
 
-      console.log('FRONT OCR:', frontText);
-      console.log('BACK OCR:', backText);
-
       const combinedText =
         frontText + ' ' + backText;
 
       const extractedData: AadhaarData = {
-        name: extractName(frontResult.data.text),
+        name: extractName(
+          frontResult.data.text
+        ),
+
         aadhaarNumber:
           extractAadhaarNumber(combinedText),
-        dob: extractDOB(frontResult.data.text),
-        gender: extractGender(frontResult.data.text),
-        address: extractAddress(backResult.data.text),
+
+        dob: extractDOB(
+          frontResult.data.text
+        ),
+
+        gender: extractGender(
+          frontResult.data.text
+        ),
+
+        address: extractAddress(
+          backResult.data.text
+        ),
       };
 
       setAadhaarData(extractedData);
 
-      dispatch(setAadhaarDetails(extractedData));
+      dispatch(
+        setAadhaarDetails(extractedData)
+      );
     } catch (err) {
       console.error('OCR Error:', err);
 
@@ -224,10 +286,15 @@ const Home: React.FC = () => {
         Aadhaar OCR Verification
       </h1>
 
+      {/* IMAGE UPLOADS */}
+
       <div className="flex flex-wrap justify-center gap-8 mb-10">
 
+        {/* FRONT */}
+
         <div className="w-80">
-          <label className="flex flex-col items-center justify-center w-full h-48 bg-white shadow-lg rounded-xl border border-gray-200 cursor-pointer hover:shadow-xl transition">
+
+          <label className="flex flex-col items-center justify-center w-full h-56 bg-white shadow-lg rounded-xl border border-gray-200 cursor-pointer hover:shadow-xl transition overflow-hidden">
 
             <span className="text-gray-600 mb-2 font-medium">
               Upload Front Image
@@ -237,7 +304,10 @@ const Home: React.FC = () => {
               type="file"
               accept="image/*"
               onChange={(e) =>
-                handleFileChange(e, 'front')
+                handleFileChange(
+                  e,
+                  'front'
+                )
               }
               className="hidden"
             />
@@ -246,7 +316,7 @@ const Home: React.FC = () => {
               <img
                 src={frontImage}
                 alt="Front Aadhaar"
-                className="w-full h-48 object-cover rounded-md"
+                className="w-full h-full object-contain"
               />
             ) : (
               <div className="text-gray-400">
@@ -256,8 +326,11 @@ const Home: React.FC = () => {
           </label>
         </div>
 
+        {/* BACK */}
+
         <div className="w-80">
-          <label className="flex flex-col items-center justify-center w-full h-48 bg-white shadow-lg rounded-xl border border-gray-200 cursor-pointer hover:shadow-xl transition">
+
+          <label className="flex flex-col items-center justify-center w-full h-56 bg-white shadow-lg rounded-xl border border-gray-200 cursor-pointer hover:shadow-xl transition overflow-hidden">
 
             <span className="text-gray-600 mb-2 font-medium">
               Upload Back Image
@@ -267,7 +340,10 @@ const Home: React.FC = () => {
               type="file"
               accept="image/*"
               onChange={(e) =>
-                handleFileChange(e, 'back')
+                handleFileChange(
+                  e,
+                  'back'
+                )
               }
               className="hidden"
             />
@@ -276,7 +352,7 @@ const Home: React.FC = () => {
               <img
                 src={backImage}
                 alt="Back Aadhaar"
-                className="w-full h-48 object-cover rounded-md"
+                className="w-full h-full object-contain"
               />
             ) : (
               <div className="text-gray-400">
@@ -286,6 +362,8 @@ const Home: React.FC = () => {
           </label>
         </div>
       </div>
+
+      {/* BUTTON */}
 
       <button
         className={`px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition ${
@@ -301,6 +379,8 @@ const Home: React.FC = () => {
           : 'Process Aadhaar'}
       </button>
 
+      {/* RESULT */}
+
       {aadhaarData && (
         <div className="mt-10 p-6 bg-white shadow-xl rounded-xl w-full max-w-2xl">
 
@@ -309,18 +389,23 @@ const Home: React.FC = () => {
           </h2>
 
           <div className="space-y-2">
+
             <p>
               <strong>Name:</strong>{' '}
               {aadhaarData.name}
             </p>
 
             <p>
-              <strong>Aadhaar Number:</strong>{' '}
+              <strong>
+                Aadhaar Number:
+              </strong>{' '}
               {aadhaarData.aadhaarNumber}
             </p>
 
             <p>
-              <strong>Date of Birth:</strong>{' '}
+              <strong>
+                Date of Birth:
+              </strong>{' '}
               {aadhaarData.dob}
             </p>
 
@@ -333,9 +418,12 @@ const Home: React.FC = () => {
               <strong>Address:</strong>{' '}
               {aadhaarData.address}
             </p>
+
           </div>
         </div>
       )}
+
+      {/* ERROR */}
 
       {error && (
         <p className="text-red-500 mt-6">
