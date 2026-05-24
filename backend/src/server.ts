@@ -1,9 +1,9 @@
 import express, { Express } from "express";
 import dotenv from "dotenv";
 import session from "express-session";
-import cors from 'cors';
-import http from 'http';
-const path = require('path');
+import cors from "cors";
+import http from "http";
+import path from "path";
 
 dotenv.config();
 
@@ -11,7 +11,11 @@ const app: Express = express();
 
 declare module 'express-session' {
   interface Session {
-    userDetails?: { userName: string, email: string, password: string };
+    userDetails?: {
+      userName: string;
+      email: string;
+      password: string;
+    };
     otp?: string;
     otpGeneratedTime?: number;
     email?: string;
@@ -19,7 +23,7 @@ declare module 'express-session' {
 }
 
 app.use(cors({
-  origin: '*',
+  origin: 'https://aadhaar-ocr-git-main-fathimas-projects-16e6f978.vercel.app',
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
 }));
@@ -31,9 +35,14 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api/uploads', express.static(path.join(__dirname, 'Adhaar-Backend', 'dist', 'src', 'public', 'uploads')));
 
-const sessionSecret = process.env.SESSION_SECRET || 'default_secret_key';
+app.use(
+  '/api/uploads',
+  express.static(path.join(__dirname, 'public', 'uploads'))
+);
+
+const sessionSecret =
+  process.env.SESSION_SECRET || 'default_secret_key';
 
 app.use(session({
   secret: sessionSecret,
@@ -44,11 +53,10 @@ app.use(session({
   },
 }));
 
-// Create HTTP server
 const server = http.createServer(app);
 
 const port = process.env.PORT || 5000;
 
 server.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
