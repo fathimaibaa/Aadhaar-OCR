@@ -23,7 +23,7 @@ declare module 'express-session' {
 }
 
 app.use(cors({
-  origin: 'https://aadhaar-ocr-git-main-fathimas-projects-16e6f978.vercel.app',
+  origin: 'https://aadhaar-ocr.vercel.app',
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
 }));
